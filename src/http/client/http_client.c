@@ -341,7 +341,10 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             }
 
             assert(strlen(request_string) > 0);
-            // printf("Request string: '%s'!\n", request_string);
+
+#ifdef HTTP_CLIENT_DEBUG_PRINT_REQUEST_STRING
+            printf("Request string:\n%s\n", request_string);
+#endif
 
             HTTP_Client_Send_Request_Context message;
             memset(&message, 0, sizeof(HTTP_Client_Send_Request_Context));
@@ -418,8 +421,6 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             break;
         }
         case HTTP_Client_Request_State_Done: {
-            (void)ctx->http_parser;
-
             ctx->done_callback(
                 ctx->hostname,
                 ctx->path,
