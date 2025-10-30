@@ -92,7 +92,7 @@ static inline bool http_tcp_send_request_work(Worker_Context *context, const uin
         printf("All bytes sent. :)\n");
         return true; // Task is done. All bytes have been sent. :)
     }
-    
+
     uint32_t bytes_sent_this_time = 0;
     TCP_Socket_Result send_result = tcp_socket_send(
         &ctx->tcp_client->socket,
@@ -124,7 +124,7 @@ static inline bool http_tcp_send_request_work(Worker_Context *context, const uin
     }
 
     ctx->amount_of_bytes_sent += bytes_sent_this_time;
-    
+
     return false; // Not done. There are still some bytes left to send.
 }
 
@@ -133,7 +133,7 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
     HTTP_Client_Receive_Response_Context *ctx = (HTTP_Client_Receive_Response_Context *)context;
 
     // printf("Worker: Reading bytes. Progress: %i/?? bytes.\n", ctx->amount_of_bytes_read);
-    
+
     uint32_t bytes_read_this_time = 0;
     TCP_Socket_Result receive_result = tcp_socket_receive(
         &ctx->tcp_client->socket,
@@ -177,7 +177,7 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
 
         // printf("Read %u bytes.\n", bytes_read_this_time);
         // printf("%s\n", ctx->sb.data);
-        
+
         if(ctx->amount_of_bytes_read > 0) {
             HTTP http;
             if(http_try_parse(ctx->http_parser, &ctx->sb.data[0], ctx->sb.length, &http)) {
@@ -185,7 +185,7 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
             }
         }
     }
-    
+
     return false;
 }
 
@@ -203,7 +203,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
 
             memset(&ctx->ip_address_candidates[0], 0, MAX_IP_ADDRESS_CANDIDATES);
             ctx->ip_address_candidates_found = 0;
-            
+
             DNS_Resolve_Result resolve_result = dns_resolve_hostname(
                 ctx->hostname,
                 &ctx->ip_address_candidates[0],
@@ -232,14 +232,14 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
         }
         case HTTP_Client_Request_State_Connect: {
             // Now that we have some IP addresses, start the tcp-client and connect to one of them.
-            
+
             bool connected_to_an_ip_address_successfully = false;
             for(uint32_t i = 0; i < ctx->ip_address_candidates_found; i++) {
                 IP_Address *ip_to_connect_to = &ctx->ip_address_candidates[i];
 
                 printf("'%s/%s': Start connecting to ip-adress: ", ctx->hostname, ctx->path);
                 ip_print(*ip_to_connect_to);
-    
+
                 TCP_Client_Start_Connecting_Result start_connecting_result = tcp_client_connect(&ctx->tcp_client, *ip_to_connect_to);
                 if(start_connecting_result != TCP_Client_Start_Connecting_Result_Connecting) {
                     printf("Failed. Got start-connecting-result: %i.\n", start_connecting_result);
@@ -277,11 +277,60 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             break;
         }
         case HTTP_Client_Request_State_Start_Sending_Request: {
+            char request_string[512];
+            memset(&request_string[0], 0, sizeof(request_string));
+
             switch(ctx->method) {
                 case HTTP_Request_Method_GET: {
+                    snprintf(
+                        &request_string[0],
+                        sizeof(request_string),
+
+                        "GET /%s HTTP/1.1\r\n"
+                        "Host: %s\r\n"
+                        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\r\n"
+                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
+                        "\r\n" // Very important to signal that we're done with the headers.
+                        ,
+
+                        ctx->path,
+                        ctx->hostname
+                    );
                     break;
                 }
                 case HTTP_Request_Method_POST: {
+                    if(ctx->body == NULL) {
+                        printf("Failed to POST. Body is NULL.\n");
+                        ctx->state = HTTP_Client_Request_State_Done; // TEMP: SS - Go to disconnect or something instead.
+                        break;
+                    }
+
+                    uint32_t body_text_length = strlen(ctx->body);
+                    if(body_text_length == 0) {
+                        printf("Failed to POST. Body's length is 0.\n");
+                        ctx->state = HTTP_Client_Request_State_Done; // TEMP: SS - Go to disconnect or something instead.
+                        break;
+                    }
+
+                    snprintf(
+                        &request_string[0],
+                        sizeof(request_string),
+
+                        "POST /%s HTTP/1.1\r\n"
+                        "Host: %s\r\n"
+                        "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\r\n"
+                        "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
+                        "Content-Type: application/json\r\n" // TODO: SS - Make this customizable.
+                        "Content-Length: %u\r\n"
+                        "\r\n" // Very important to signal that we're done with the headers.
+                        "%s"
+                        ,
+
+                        ctx->path,
+                        ctx->hostname,
+                        body_text_length,
+                        ctx->body
+                    );
                     break;
                 }
                 default: {
@@ -290,24 +339,9 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
                     break;
                 }
             }
-            
-            char request_string[512];
-            memset(&request_string[0], 0, sizeof(request_string));
-            sprintf(
-                &request_string[0],
 
-                "GET /%s HTTP/1.1\r\n"
-                "Host: %s\r\n"
-                "User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36\r\n"
-                "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7\r\n"
-                // "Connection: close\r\n"
-                "\r\n" // Very important to signal that we're done with the headers.
-                ,
-
-                ctx->path
-                ,
-                ctx->hostname
-            );
+            assert(strlen(request_string) > 0);
+            // printf("Request string: '%s'!\n", request_string);
 
             HTTP_Client_Send_Request_Context message;
             memset(&message, 0, sizeof(HTTP_Client_Send_Request_Context));
@@ -315,7 +349,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             message.text = request_string;
             message.amount_of_bytes_to_send = strlen(request_string);
             message.amount_of_bytes_sent = 0;
-            
+
             bool ok = worker_add_task(
                 &ctx->tcp_worker,
                 &message,
@@ -329,7 +363,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             }
 
             ctx->state = HTTP_Client_Request_State_Sending_Request;
-            
+
             break;
         }
         case HTTP_Client_Request_State_Sending_Request: {
@@ -339,11 +373,11 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             if(tasks_left == 0) {
                 // We've sent the entire request.
                 printf("Let's wait for a response ...\n");
-                
+
                 ctx->state = HTTP_Client_Request_State_Waiting_For_Response;
                 break;
             }
-            
+
             break;
         }
         case HTTP_Client_Request_State_Waiting_For_Response: {
@@ -356,7 +390,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
 
             http_parser_init(&ctx->http_parser, HTTP_CLIENT_RESPONSE_BUFFER_INITIAL_SIZE);
             response.http_parser = &ctx->http_parser;
-            
+
             bool ok = worker_add_task(
                 &ctx->tcp_worker,
                 &response,
@@ -369,9 +403,9 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
                 ctx->state = HTTP_Client_Request_State_Done; // TEMP: SS - Go to disconnect or something instead.
                 break;
             }
-            
+
             ctx->state = HTTP_Client_Request_State_Receiving_Response;
-            
+
             break;
         }
         case HTTP_Client_Request_State_Receiving_Response: {
@@ -385,7 +419,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
         }
         case HTTP_Client_Request_State_Done: {
             (void)ctx->http_parser;
-                        
+
             ctx->done_callback(
                 ctx->hostname,
                 ctx->path,
@@ -422,7 +456,7 @@ bool http_client_request(
     ctx.hostname = hostname;
     ctx.path = path;
     ctx.body = body;
-    
+
     ctx.done_callback = done_callback;
     ctx.state = HTTP_Client_Request_State_Resolving;
 

@@ -4,12 +4,12 @@ BUILD_DIR := build
 CFLAGS := -std=gnu99 -Isrc -Wall -Werror -Wextra -MMD -MP -DLINUX
 LDFLAGS := -flto -Wl,--gc-sections
 
-LIBS := 
+LIBS :=
 SRC := $(shell find -L $(SRC_DIR)  -type f -name '*.c')
 OBJ := $(patsubst $(SRC_DIR)/%.c,$(BUILD_DIR)/%.o,$(SRC))
 DEP := $(OBJ:.o=.d)
 
-BIN := main
+BIN := $(BUILD_DIR)/main
 
 all: $(BIN)
 	@echo "Build complete."
@@ -21,18 +21,13 @@ $(BUILD_DIR)/%.o: $(SRC_DIR)/%.c
 	@echo "Compiling $<..."
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
-	
+
 run: $(BIN)
 	./$(BIN)
-	
+
 clean:
-	@rm -rf $(BUILD_DIR) $(BIN)
-	
-print:
-	@echo "Källfiler: $(SRC)"
-	@echo "Objektfiler: $(OBJ)"
-	@echo "Dependency-filer: $(DEP)"
-	
+	@rm -rf $(BUILD_DIR)
+
 -include $(DEP)
 
 .PHONY: all run clean
