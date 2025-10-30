@@ -1,7 +1,8 @@
 CC := gcc
 SRC_DIR := src
 BUILD_DIR := build
-CFLAGS := -std=gnu99 -Isrc -Wall -Werror -Wextra -MMD -MP -DLINUX
+DEFINES := LINUX
+CFLAGS := -std=gnu99 -Isrc -Wall -Werror -Wextra -MMD -MP $(addprefix -D,$(DEFINES))
 LDFLAGS := -flto -Wl,--gc-sections
 
 LIBS :=
