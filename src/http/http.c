@@ -132,7 +132,7 @@ bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Header
 
             if (string_length > 0) {
                 // TODO: SS - Use sscanf here instead.
-                
+
                 assert(out_headers->header_count < HTTP_MAX_HEADERS);
                 HTTP_Header *header = &out_headers->headers[out_headers->header_count];
 
@@ -196,7 +196,7 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
     *out_chunk_length = 0;
 
     if(buf_len == 0) {
-        return true;
+        return false;
     }
 
     uint32_t expected_chunk_length = 0;
@@ -224,12 +224,14 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
 
     size_text[i] = '\0';
 
-    if(strlen(size_text) > 0) {
-        int result = sscanf(size_text, "%x", &expected_chunk_length);
-        assert(result == 1);
+    assert(strlen(size_text) > 0);
 
-        // printf("EXPECTED CHUNK LENGTH: %u.\n", expected_chunk_length);
-    }
+
+    // printf("Size text: '%s'\n", size_text);
+    int result = sscanf(size_text, "%x", &expected_chunk_length);
+    assert(result == 1);
+
+    // printf("EXPECTED CHUNK LENGTH: %u.\n", expected_chunk_length);
 
     if (expected_chunk_length == 0) {
         return true;
@@ -293,15 +295,16 @@ bool http_try_parse_body(const HTTP_Headers *headers, const char *buf, const uin
                 bool success = get_chunk_start_and_length(&buf[out_body->offset], buf_len - out_body->offset, &chunk_start, &chunk_length);
                 if(success) {
                     if(chunk_length == 0) {
-                        // Done!
+                        // printf("Chunk length: %u\n", chunk_length);
                         return true; // Return 'true' because we're now done parsing the body. :)
                     }
-                    else {
-                        // printf("Chunk start: %u, chunk length: %u.\n", chunk_start, chunk_length);
 
-                        string_buffer_append_buf(&out_body->string_buffer, &buf[chunk_start], chunk_length);
-                        out_body->offset = chunk_start + chunk_length;
-                    }
+                    string_buffer_append_buf(&out_body->string_buffer, &buf[out_body->offset + chunk_start], chunk_length);
+                    out_body->offset += chunk_start + chunk_length + 2;
+                }
+                else {
+                    // Wait for more data.
+                    return false;
                 }
             }
 
@@ -325,7 +328,7 @@ bool http_try_parse_body(const HTTP_Headers *headers, const char *buf, const uin
                     if(buf_len < content_length) {
                         return false;
                     }
-                    
+
                     string_buffer_append_buf(&out_body->string_buffer, &buf[0], content_length);
                 }
                 return true;

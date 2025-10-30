@@ -49,6 +49,15 @@ int main() {
     http_client_request(
         &worker,
         HTTP_Request_Method_GET,
+        "api.open-meteo.com", "v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m",
+        NULL,
+        http_client_request_callback
+    );
+
+
+    http_client_request(
+        &worker,
+        HTTP_Request_Method_GET,
         "chasacademy.instructure.com", "courses/589",
         NULL,
         http_client_request_callback

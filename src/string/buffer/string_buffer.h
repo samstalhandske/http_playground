@@ -44,7 +44,7 @@ static inline void string_buffer_append_buf(String_Buffer *buf, const char *char
     assert(char_buffer != NULL);
     assert(length > 0);
     string_buffer_resize(buf, buf->length + length);
-    
+
     memcpy(&buf->data[buf->length], char_buffer, length);
     buf->length += length;
 }

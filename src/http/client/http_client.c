@@ -142,6 +142,8 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
         &bytes_read_this_time
     );
 
+    // printf("Receive result: %i\n", receive_result);
+
     switch(receive_result) {
         case TCP_Socket_Result_Not_Connected: {
             assert(false); // TEMP: SS - Handle this more gracefully.
@@ -150,8 +152,8 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
         case TCP_Socket_Result_OK: {
             if(bytes_read_this_time == 0) { // Timeout or socket closed, probably.
                 printf("Read 0 bytes. Work done.\n");
-                return true;
             }
+
             break;
         }
         case TCP_Socket_Result_Not_Ready_To_Be_Read: {
@@ -178,11 +180,9 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
         // printf("Read %u bytes.\n", bytes_read_this_time);
         // printf("%s\n", ctx->sb.data);
 
-        if(ctx->amount_of_bytes_read > 0) {
-            HTTP http;
-            if(http_try_parse(ctx->http_parser, &ctx->sb.data[0], ctx->sb.length, &http)) {
-                return true;
-            }
+        HTTP http;
+        if(http_try_parse(ctx->http_parser, &ctx->sb.data[0], ctx->sb.length, &http)) {
+            return true;
         }
     }
 

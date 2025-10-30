@@ -87,4 +87,5 @@ bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, 
 
 void http_dispose(HTTP *http);
 
+void http_temp();
 #endif
