@@ -1,0 +1,6 @@
+PUT /api/user/77 HTTP/1.1
+Host: localhost
+Content-Type: application/json
+Content-Length: 36
+
+{"name":"Test User","active":true}

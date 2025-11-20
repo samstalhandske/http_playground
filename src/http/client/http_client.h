@@ -23,12 +23,6 @@ typedef enum {
     HTTP_Client_Request_State_Done
 } HTTP_Client_Request_State;
 
-typedef enum {
-    HTTP_Request_Method_GET,
-    HTTP_Request_Method_POST
-    // ..
-} HTTP_Request_Method;
-
 #ifndef MAX_IP_ADDRESS_CANDIDATES
 #define MAX_IP_ADDRESS_CANDIDATES 16
 #endif
@@ -49,7 +43,7 @@ typedef struct {
 } HTTP_Client_Receive_Response_Context;
 
 typedef struct {
-    HTTP_Request_Method method;
+    HTTP_Method method;
     const char *hostname;
     const char *path;
     const char *body;
@@ -81,7 +75,7 @@ typedef struct {
 bool http_client_request(
     Worker *worker,
 
-    HTTP_Request_Method method,
+    HTTP_Method method,
     const char *hostname,
     const char *path,
     const char *body,

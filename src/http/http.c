@@ -7,6 +7,81 @@
 
 #include "string/buffer/string_buffer.h"
 
+const char *http_status_codes[] = { // https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+    // 1xx informational response – the request was received, continuing process
+    [100] = "Continue",
+    [101] = "Switching Protocols",
+    [102] = "Processing",
+    [103] = "Early Hints",
+
+    // 2xx successful – the request was successfully received, understood, and accepted
+    [200] = "OK",
+    [201] = "Created",
+    [202] = "Accepted",
+    [203] = "Non-Authoritative Information",
+    [204] = "No Content",
+    [205] = "Reset Content",
+    [206] = "Partial Content",
+    [207] = "Multi-Status",
+    [208] = "Already Reported",
+    [226] = "IM Used",
+
+    // 3xx redirection – further action needs to be taken in order to complete the request
+    [300] = "Multiple Choices",
+    [301] = "Moved Permanently",
+    [302] = "Found",
+    [303] = "See Other",
+    [304] = "Not Modified",
+    [305] = "Use Proxy",
+    [306] = "Switch Proxy",
+    [307] = "Temporary Redirect",
+    [308] = "Permanent Redirect",
+
+    // 4xx client error – the request contains bad syntax or cannot be fulfilled
+    [400] = "Bad Request",
+    [401] = "Unauthorized",
+    [402] = "Payment Required",
+    [403] = "Forbidden",
+    [404] = "Not Found",
+    [405] = "Method Not Allowed",
+    [406] = "Not Acceptable",
+    [407] = "Proxy Authentication Required",
+    [408] = "Request Timeout",
+    [409] = "Conflict",
+    [410] = "Gone",
+    [411] = "Length Required",
+    [412] = "Precondition Failed",
+    [413] = "Payload Too Large",
+    [414] = "URI Too Long",
+    [415] = "Unsupported Media Type",
+    [416] = "Range Not Satisfiable",
+    [417] = "Expectation Failed",
+    [418] = "I'm a teapot",
+    [421] = "Misdirected Request",
+    [422] = "Unprocessable Content",
+    [423] = "Locked",
+    [424] = "Failed Dependency",
+    [425] = "Too Early",
+    [426] = "Upgrade Required",
+    [428] = "Precondition Required",
+    [429] = "Too Many Requests",
+    [431] = "Request Header Fields Too Large",
+    [451] = "Unavailable For Legal Reasons",
+
+    // 5xx server error – the server failed to fulfil an apparently valid request
+    [500] = "Internal Server Error",
+    [501] = "Not Implemented",
+    [502] = "Bad Gateway",
+    [503] = "Service Unavailable",
+    [504] = "Gateway Timeout",
+    [505] = "HTTP Version Not Supported",
+    [506] = "Variant Also Negotiates",
+    [507] = "Insufficient Storage",
+    [508] = "Loop Detected",
+    [510] = "Not Extended",
+    [511] = "Network Authentication Required"
+};
+
 bool http_parser_init(HTTP_Parser *parser, uint64_t body_buffer_capacity) {
     string_buffer_init(&parser->http.body.string_buffer, body_buffer_capacity);
     return true;
@@ -15,6 +90,21 @@ bool http_parser_init(HTTP_Parser *parser, uint64_t body_buffer_capacity) {
 bool http_parser_dispose(HTTP_Parser *parser) {
     string_buffer_free(&parser->http.body.string_buffer);
     return true;
+}
+
+bool http_string_to_method_type(const char *text, HTTP_Method *out_method) {
+    assert(text != NULL);
+
+    if(strcmp(text, "GET") == 0) {
+        *out_method = HTTP_Method_GET;
+        return true;
+    }
+    else if(strcmp(text, "POST") == 0) {
+        *out_method = HTTP_Method_POST;
+        return true;
+    }
+
+    return false;
 }
 
 bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len, HTTP *out_http) {
@@ -39,7 +129,7 @@ bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len
 
     if(parser->state == HTTP_Parse_Status_Parsing_Body) {
         // printf("Trying to read HTTP body ...\n");
-        if(http_try_parse_body(&parser->http.headers, &parser->buffer[parser->bytes_parsed_offset], parser->buffer_length - parser->bytes_parsed_offset, &parser->http.body)) {
+        if(http_try_parse_body(&parser->http.status, &parser->http.headers, &parser->buffer[parser->bytes_parsed_offset], parser->buffer_length - parser->bytes_parsed_offset, &parser->http.body)) {
             parser->state = HTTP_Parse_Status_Parsing_Done;
         }
     }
@@ -57,135 +147,175 @@ bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status 
         return false;
     }
 
-    uint64_t line_length = 0;
-    bool found_line_end = false;
-    for (uint64_t i = 0; i < buf_len; i++) {
-        if (buf[i] == '\n') {
-            line_length = i;
-            found_line_end = true;
+    bool got_status_type = false;
+    { // Check if the status-line is a request or a response.
+        { // Check if it's a HTTP-request ...
+            char method_str[64];
+            memset(&method_str[0], 0, sizeof(method_str));
+
+            char path_str[2048];
+            memset(&path_str[0], 0, sizeof(path_str));
+
+            int http_version_major = 0;
+            int http_version_minor = 0;
+
+            int n = sscanf(buf,
+                "%s" // Method.
+                " "
+                "%s" // Path.
+                " "
+                "HTTP/%d.%d" // Version.
+                ,
+                &method_str[0],
+                &path_str[0],
+                &http_version_major,
+                &http_version_minor
+            );
+
+            if(n == 4) {
+                got_status_type = true;
+
+                out_status->type = HTTP_Status_Type_Request;
+                http_string_to_method_type(method_str, &out_status->method);
+
+                out_status->http_version_major = (uint8_t)http_version_major;
+                out_status->http_version_minor = (uint8_t)http_version_minor;
+                
+                out_status->status_code = 0;
+                
+                printf("Request! Method: '%s', Path: '%s'. HTTP-version is %d.%d.\n", method_str, path_str, http_version_major, http_version_minor);
+            }
+        }
+
+        if(!got_status_type) {
+            // Okay, so far we've not successfully parsed a HTTP-request. Let's check if it's a HTTP-response ...
+
+            int http_version_major = 0;
+            int http_version_minor = 0;
+
+            int status_code = 0;
+
+            char status_str[256];
+            memset(&status_str[0], 0, sizeof(status_str));
+
+            int n = sscanf(buf,
+                "HTTP/%d.%d" // Version.
+                " "
+                "%d" // Status-code.
+                " "
+                "%s" // Status-description.
+                ,
+                &http_version_major, &http_version_minor,
+                &status_code,
+                &status_str[0]
+            );
+
+            if(n == 4) {
+                got_status_type = true;
+
+                out_status->type = HTTP_Status_Type_Response;
+                out_status->status_code = status_code;
+                out_status->http_version_major = (uint8_t)http_version_major;
+                out_status->http_version_minor = (uint8_t)http_version_minor;
+                
+                printf("Response! HTTP-version is %d.%d, status code: %d (%s).\n", http_version_major, http_version_minor, status_code, status_str);
+            }
+        }
+    }
+
+    if(!got_status_type) {
+        return false;
+    }
+
+    // Now that we've successfully parsed the status-line, count the amount of bytes to consume (offset our buffer).
+    uint32_t i;
+    uint32_t consumed = 0;
+    for(i = 1; i < buf_len; i++) {
+        const char *prev = &buf[i - 1];
+        const char *current = &buf[i];
+        assert(prev != NULL);
+        assert(current != NULL);
+        
+        consumed = i;
+        if(*prev == '\r' && *current == '\n') {
             break;
         }
     }
 
-    if (!found_line_end) {
-        return false;
-    }
+    consumed += 1;
 
-    char line[256] = {0};
-    if (line_length >= sizeof(line)) {
-        return false;
-    }
-    memcpy(line, buf, line_length);
-    line[line_length] = '\0';
-
-    int version_major = 0;
-    int version_minor = 0;
-    int code = 0;
-    char text[64] = {0};
-
-    int n = sscanf(line, "HTTP/%d.%d %d %[^\r\n]", &version_major, &version_minor, &code, text);
-    if (n < 3) {
-        return false;
-    }
-
-    snprintf(out_status->http_version, sizeof(out_status->http_version), "HTTP/%d.%d", version_major, version_minor);
-    out_status->status_code = code;
-    snprintf(out_status->status_text, sizeof(out_status->status_text), "%s", text);
-
-    *out_consumed_bytes = line_length + 1;
+    assert(buf[consumed] != '\n');
+    *out_consumed_bytes = consumed;
+    
     return true;
 }
 
+bool http_try_parse_header(const char *buf, HTTP_Header *out_header) {
+    assert(buf != NULL);
+    
+    char fmt[64];
+    snprintf(fmt, sizeof(fmt),
+        "%%%d[^:]:" // Key
+        " %%%d[^\r\n]", // Value
+        HTTP_MAX_HEADER_KEY_LENGTH - 1,
+        HTTP_MAX_HEADER_VALUE_LENGTH - 1
+    );
+
+    int n = sscanf(buf, fmt, out_header->key, out_header->value);
+    if(n != 2) {
+        return false;
+    }
+
+    return true;
+}
 
 bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes) {
-    assert(buf_len > 0);
-    uint64_t row = 0;
-    uint64_t column = 0;
-    uint64_t index_in_buffer = 0;
+    const char *line_start = buf;
 
-    uint64_t row_start = 0;
+    (void)buf_len;
+    (void)out_consumed_bytes;
 
-    bool found_r = false;
+    uint64_t headers_end_index = 0;
+    for(uint64_t i = 0; ; i++) {
+        if(buf[i] == '\n' || buf[i] == '\0') {
+            uint64_t line_len = &buf[i] - line_start;
 
-    memset(&out_headers->headers, 0, HTTP_MAX_HEADERS * sizeof(HTTP_Header));
-    out_headers->header_count = 0;
-
-    bool found_end_of_headers = false;
-
-    while (index_in_buffer < buf_len) {
-        char c = buf[index_in_buffer];
-
-        if (c == '\r') {
-            index_in_buffer++;
-            found_r = true;
-            continue;
-        }
-
-        if (c == '\n') {
-            uint64_t row_end = index_in_buffer;
-            assert(row_end >= row_start);
-            uint64_t string_length = row_end - row_start;
-            if(found_r) {
-                string_length -= 1;
-                found_r = false;
+            char line[HTTP_MAX_HEADER_KEY_LENGTH + HTTP_MAX_HEADER_VALUE_LENGTH + 32];
+            if(line_len >= sizeof(line)) {
+                line_len = sizeof(line) - 1;
             }
 
-            if (string_length > 0) {
-                // TODO: SS - Use sscanf here instead.
+            memcpy(line, line_start, line_len);
+            line[line_len] = '\0';
 
-                assert(out_headers->header_count < HTTP_MAX_HEADERS);
-                HTTP_Header *header = &out_headers->headers[out_headers->header_count];
-
-                int32_t seperator_relative_index = -1;
-                // Find out where the seperator (colon) is.
-                for(uint32_t i = 0; i < string_length; i++) {
-                    char v = buf[row_start + i];
-
-                    if(v == ':') {
-                        seperator_relative_index = i;
-                        break;
-                    }
-                }
-                assert(seperator_relative_index >= 0);
-
-                int32_t value_start = seperator_relative_index + 1;
-
-                while (value_start < (int32_t)string_length && buf[row_start + value_start] == ' ') {
-                    value_start++;
-                }
-
-                int32_t value_length = (int32_t)string_length - value_start;
-
-                snprintf(&header->key[0], HTTP_MAX_HEADER_KEY_LENGTH, "%.*s", (int)seperator_relative_index, buf + row_start);
-                snprintf(&header->value[0], HTTP_MAX_HEADER_VALUE_LENGTH, "%.*s", value_length, buf + row_start + value_start);
-
-                // printf("Found header! Index: %i. Key: '%s'.", out_headers->header_count, header->key);
-
-                out_headers->header_count += 1;
+            if(line_len > 0 && line[line_len - 1] == '\r') {
+                line[line_len - 1] = '\0';
             }
-            else if (string_length == 0) {
-                // printf("Row %lu is empty. End of headers. Breaking out of the loop.\n\n", row);
-                found_end_of_headers = true;
+
+            if(strlen(line) == 0) {
+                headers_end_index = i;
                 break;
             }
+        
+            // printf("%s\n", line);
 
-            row++;
-            column = 0;
-            row_start = index_in_buffer + 1;
+            HTTP_Header *header = &out_headers->headers[out_headers->header_count];
+            if(http_try_parse_header(&line[0], header)) {
+                printf("Found header! Index: %i. Key: '%s', value: '%s'.\n", out_headers->header_count, header->key, header->value);
+                out_headers->header_count += 1;
+            }
 
-            index_in_buffer++;
-            continue;
+            if (buf[i] == '\0') break;
+            line_start = buf + i + 1;
         }
-
-        column++;
-        index_in_buffer++;
     }
 
-    if(found_end_of_headers) {
-        *out_consumed_bytes += index_in_buffer + 1;
-    }
+    headers_end_index += 1;
+    
+    // printf("Done with headers.\n");
+    *out_consumed_bytes += headers_end_index;
 
-    return found_end_of_headers;
+    return true;
 }
 
 // NOTE: SS - Returns true when a chunk has been fully read. Has an out-parameter for the size of the read chunk and for offsetting.
@@ -227,7 +357,7 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
     assert(strlen(size_text) > 0);
 
 
-    // printf("Size text: '%s'\n", size_text);
+    printf("Size text: '%s'\n", size_text);
     int result = sscanf(size_text, "%x", &expected_chunk_length);
     assert(result == 1);
 
@@ -250,8 +380,32 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
     return false;
 }
 
-bool http_try_parse_body(const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body) {
+bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body) {
     assert(out_body != NULL);
+
+    bool should_parse_body = false;
+    switch(status->method) {
+        case HTTP_Method_GET: {
+            should_parse_body = false;
+            break;
+        }
+        case HTTP_Method_POST: {
+            should_parse_body = true;
+            break;
+        }
+        default: {
+            printf("Unimplemented HTTP-method %i when trying to parse the body. Assuming that no body should be parsed.", status->method);
+            should_parse_body = false;
+            break;
+        }
+    }
+
+    if(!should_parse_body) {
+        return true;
+    }
+
+    printf("Buffer is '%s'.\n", buf);
+
 
     if(!out_body->has_encoding_set) {
         const char *encoding = NULL;
@@ -311,14 +465,12 @@ bool http_try_parse_body(const HTTP_Headers *headers, const char *buf, const uin
             break;
         }
         case HTTP_Transfer_Encoding_Identity: {
-            // TODO: SS - Check for the 'Content-Length' header. Expect that many bytes in the body.
-            // Apparently, 'Content-Length' is not required.. So we also need to check if the socket is closed.
             const char *content_length_text = NULL;
             http_try_get_key_from_header(headers, "Content-Length", &content_length_text);
 
             if(content_length_text == NULL) {
                 // We don't have a 'Content-Length'. Wait for the socket to close.
-                printf("TODO: SS - (Sadly) Support lack of 'Content-Length'.\n");
+                printf("TODO: SS - Missing 'Content-Length'. Support this.\n");
                 assert(false);
             }
             else {

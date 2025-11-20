@@ -25,10 +25,25 @@ typedef enum {
     HTTP_Transfer_Encoding_Identity
 } HTTP_Transfer_Encoding;
 
+typedef enum {
+    HTTP_Method_GET,
+    HTTP_Method_POST
+    // ..
+} HTTP_Method;
+
+typedef enum {
+    HTTP_Status_Type_Request,
+    HTTP_Status_Type_Response,
+} HTTP_Status_Type;
+
 typedef struct {
-    char http_version[16];
-    int  status_code;
-    char status_text[64];
+    HTTP_Status_Type type;
+    HTTP_Method method;
+    
+    uint8_t http_version_major;
+    uint8_t http_version_minor;
+
+    int status_code;
 } HTTP_Status;
 
 typedef struct {
@@ -81,7 +96,7 @@ bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len
 
 bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status *out_status, uint64_t *out_consumed_bytes);
 bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes);
-bool http_try_parse_body(const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body);
+bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body);
 
 bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, const char **out_value);
 

@@ -2,81 +2,6 @@
 #include <string.h>
 #include <assert.h>
 
-const char *http_status_codes[] = { // https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
-    // 1xx informational response – the request was received, continuing process
-    [100] = "Continue",
-    [101] = "Switching Protocols",
-    [102] = "Processing",
-    [103] = "Early Hints",
-
-    // 2xx successful – the request was successfully received, understood, and accepted
-    [200] = "OK",
-    [201] = "Created",
-    [202] = "Accepted",
-    [203] = "Non-Authoritative Information",
-    [204] = "No Content",
-    [205] = "Reset Content",
-    [206] = "Partial Content",
-    [207] = "Multi-Status",
-    [208] = "Already Reported",
-    [226] = "IM Used",
-
-    // 3xx redirection – further action needs to be taken in order to complete the request
-    [300] = "Multiple Choices",
-    [301] = "Moved Permanently",
-    [302] = "Found",
-    [303] = "See Other",
-    [304] = "Not Modified",
-    [305] = "Use Proxy",
-    [306] = "Switch Proxy",
-    [307] = "Temporary Redirect",
-    [308] = "Permanent Redirect",
-
-    // 4xx client error – the request contains bad syntax or cannot be fulfilled
-    [400] = "Bad Request",
-    [401] = "Unauthorized",
-    [402] = "Payment Required",
-    [403] = "Forbidden",
-    [404] = "Not Found",
-    [405] = "Method Not Allowed",
-    [406] = "Not Acceptable",
-    [407] = "Proxy Authentication Required",
-    [408] = "Request Timeout",
-    [409] = "Conflict",
-    [410] = "Gone",
-    [411] = "Length Required",
-    [412] = "Precondition Failed",
-    [413] = "Payload Too Large",
-    [414] = "URI Too Long",
-    [415] = "Unsupported Media Type",
-    [416] = "Range Not Satisfiable",
-    [417] = "Expectation Failed",
-    [418] = "I'm a teapot",
-    [421] = "Misdirected Request",
-    [422] = "Unprocessable Content",
-    [423] = "Locked",
-    [424] = "Failed Dependency",
-    [425] = "Too Early",
-    [426] = "Upgrade Required",
-    [428] = "Precondition Required",
-    [429] = "Too Many Requests",
-    [431] = "Request Header Fields Too Large",
-    [451] = "Unavailable For Legal Reasons",
-
-    // 5xx server error – the server failed to fulfil an apparently valid request
-    [500] = "Internal Server Error",
-    [501] = "Not Implemented",
-    [502] = "Bad Gateway",
-    [503] = "Service Unavailable",
-    [504] = "Gateway Timeout",
-    [505] = "HTTP Version Not Supported",
-    [506] = "Variant Also Negotiates",
-    [507] = "Insufficient Storage",
-    [508] = "Loop Detected",
-    [510] = "Not Extended",
-    [511] = "Network Authentication Required"
-};
-
 static inline bool http_tcp_send_request_work(Worker_Context *context, const uint32_t lifetime) {
     (void)lifetime;
     HTTP_Client_Send_Request_Context *ctx = (HTTP_Client_Send_Request_Context *)context;
@@ -281,7 +206,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
             memset(&request_string[0], 0, sizeof(request_string));
 
             switch(ctx->method) {
-                case HTTP_Request_Method_GET: {
+                case HTTP_Method_GET: {
                     snprintf(
                         &request_string[0],
                         sizeof(request_string),
@@ -298,7 +223,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
                     );
                     break;
                 }
-                case HTTP_Request_Method_POST: {
+                case HTTP_Method_POST: {
                     if(ctx->body == NULL) {
                         printf("Failed to POST. Body is NULL.\n");
                         ctx->state = HTTP_Client_Request_State_Done; // TEMP: SS - Go to disconnect or something instead.
@@ -444,7 +369,7 @@ bool http_client_request_work(Worker_Context *context, const uint32_t lifetime) 
 
 bool http_client_request(
     Worker *worker,
-    HTTP_Request_Method method,
+    HTTP_Method method,
     const char *hostname,
     const char *path,
     const char *body,
