@@ -1,8 +1,13 @@
 #include <stdio.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <assert.h>
 
-#include "http/client/http_client.h"
+#include "string/buffer/string_buffer.h"
+// #include "http/client/http_client.h"
+#include "http/http.h"
 
 typedef enum {
     HTTP_Fuzz_Result_OK,
@@ -60,11 +65,17 @@ HTTP_Fuzz_Result http_fuzz(const char *input_file_path) {
     memset(&parser, 0, sizeof(HTTP_Parser));
     http_parser_init(&parser, 1024);
 
-    // char body_data[] = "{\"latitude\":52.52,\"longitude\":13.419998,\"generationtime_ms\":0.041484832763671875,\"utc_offset_seconds\":0,\"timezone\":\"GMT\",\"timezone_abbreviation\":\"GMT\",\"elevation\":38.0,\"hourly_units\":{\"time\":\"iso8601\",\"temperature_2m\":\"°C\"},\"hourly\":{\"time\":[\"2025-10-29T00:00\",\"2025-10-29T01:00\",\"2025-10-29T02:00\",\"2025-10-29T03:00\",\"2025-10-29T04:00\",\"2025-10-29T05:00\",\"2025-10-29T06:00\",\"2025-10-29T07:00\",\"2025-10-29T08:00\",\"2025-10-29T09:00\",\"2025-10-29T10:00\",\"2025-10-29T11:00\",\"2025-10-29T12:00\",\"2025-10-29T13:00\",\"2025-10-29T14:00\",\"2025-10-29T15:00\",\"2025-10-29T16:00\",\"2025-10-29T17:00\",\"2025-10-29T18:00\",\"2025-10-29T19:00\",\"2025-10-29T20:00\",\"2025-10-29T21:00\",\"2025-10-29T22:00\",\"2025-10-29T23:00\"],\"temperature_2m\":[9.5,9.0,8.8,8.1,8.1,7.8,7.5,7.6,8.4,9.8,11.5,12.8,13.6,14.1,14.1,14.0,13.3,12.5,11.7,11.4,11.1,10.8,10.4,10.4]}}";
-
-    if(!http_try_parse(&parser, &input_buffer[0], amount_of_bytes_in_file, &http)) {
-        free(input_buffer);
-        return HTTP_Fuzz_Result_Failed_To_Parse;
+    HTTP_Parse_Result parse_result = http_try_parse(&parser, &input_buffer[0], amount_of_bytes_in_file, &http);
+    switch(parse_result) {
+        case HTTP_Parse_Result_Done: {
+            break;
+        }
+        case HTTP_Parse_Result_Invalid_Data:
+        case HTTP_Parse_Result_Needs_More_Data:
+        case HTTP_Parse_Result_TODO: {
+            free(input_buffer);
+            return HTTP_Fuzz_Result_Failed_To_Parse;
+        }
     }
 
     free(input_buffer);
@@ -118,40 +129,40 @@ int main(int argc, char *argv[]) {
 
     /////////////////////////////////////
 
-    Worker worker = {0};
-    worker.name = "Main Worker";
+    // Worker worker = {0};
+    // worker.name = "Main Worker";
 
-    http_client_request(
-        &worker,
-        HTTP_Method_POST,
-        "httpbin.org", "post",
-        "{\r\n"
-        "    \"elite_value\": 1337,\r\n"
-        "    \"device\": \"UUID\",\r\n"
-        "    \"time\": \"<time>\",\r\n"
-        "    \"temperature\": \"<temperature>°C\"\r\n"
-        "}\r\n",
-        http_client_request_callback
-    );
+    // http_client_request(
+    //     &worker,
+    //     HTTP_Method_POST,
+    //     "httpbin.org", "post",
+    //     "{\r\n"
+    //     "    \"elite_value\": 1337,\r\n"
+    //     "    \"device\": \"UUID\",\r\n"
+    //     "    \"time\": \"<time>\",\r\n"
+    //     "    \"temperature\": \"<temperature>°C\"\r\n"
+    //     "}\r\n",
+    //     http_client_request_callback
+    // );
 
-    http_client_request(
-        &worker,
-        HTTP_Method_GET,
-        "api.open-meteo.com", "v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m",
-        NULL,
-        http_client_request_callback
-    );
+    // http_client_request(
+    //     &worker,
+    //     HTTP_Method_GET,
+    //     "api.open-meteo.com", "v1/forecast?latitude=52.52&longitude=13.41&hourly=temperature_2m",
+    //     NULL,
+    //     http_client_request_callback
+    // );
 
 
-    http_client_request(
-        &worker,
-        HTTP_Method_GET,
-        "chasacademy.instructure.com", "courses/589",
-        NULL,
-        http_client_request_callback
-    );
+    // http_client_request(
+    //     &worker,
+    //     HTTP_Method_GET,
+    //     "chasacademy.instructure.com", "courses/589",
+    //     NULL,
+    //     http_client_request_callback
+    // );
 
-    while(worker_work(&worker) > 0);
+    // while(worker_work(&worker) > 0);
     
     return 0;
 }

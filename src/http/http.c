@@ -103,11 +103,15 @@ bool http_string_to_method_type(const char *text, HTTP_Method *out_method) {
         *out_method = HTTP_Method_POST;
         return true;
     }
+    else if(strcmp(text, "PUT") == 0) {
+        *out_method = HTTP_Method_PUT;
+        return true;
+    }
 
     return false;
 }
 
-bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len, HTTP *out_http) {
+HTTP_Parse_Result http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len, HTTP *out_http) {
     assert(parser != NULL);
 
     parser->buffer = buf;
@@ -115,34 +119,65 @@ bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len
 
     if(parser->state == HTTP_Parse_Status_Parsing_Status) {
         // printf("Trying to read HTTP status ...\n");
-        if(http_try_parse_status(&parser->buffer[parser->bytes_parsed_offset], parser->buffer_length - parser->bytes_parsed_offset, &parser->http.status, &parser->bytes_parsed_offset)) {
-            parser->state = HTTP_Parse_Status_Parsing_Headers;
+        HTTP_Parse_Result result = http_try_parse_status(
+            &parser->buffer[parser->bytes_parsed_offset],
+            parser->buffer_length - parser->bytes_parsed_offset,
+            &parser->http.status,
+            &parser->bytes_parsed_offset
+        );
+
+        if(result != HTTP_Parse_Result_Done) {
+            // printf("**A** result: %i.\n", result);
+            return result;
         }
+
+        parser->state = HTTP_Parse_Status_Parsing_Headers;
     }
 
     if(parser->state == HTTP_Parse_Status_Parsing_Headers) {
         // printf("Trying to read HTTP headers ...\n");
-        if(http_try_parse_headers(&parser->buffer[parser->bytes_parsed_offset], parser->buffer_length - parser->bytes_parsed_offset, &parser->http.headers, &parser->bytes_parsed_offset)) {
-            parser->state = HTTP_Parse_Status_Parsing_Body;
+        HTTP_Parse_Result result = http_try_parse_headers(
+            &parser->buffer[parser->bytes_parsed_offset],
+            parser->buffer_length - parser->bytes_parsed_offset,
+            &parser->http.headers,
+            &parser->bytes_parsed_offset
+        );
+
+        if(result != HTTP_Parse_Result_Done) {
+            // printf("**B** result: %i.\n", result);
+            return result;
         }
+
+        parser->state = HTTP_Parse_Status_Parsing_Body;
     }
 
     if(parser->state == HTTP_Parse_Status_Parsing_Body) {
         // printf("Trying to read HTTP body ...\n");
-        if(http_try_parse_body(&parser->http.status, &parser->http.headers, &parser->buffer[parser->bytes_parsed_offset], parser->buffer_length - parser->bytes_parsed_offset, &parser->http.body)) {
-            parser->state = HTTP_Parse_Status_Parsing_Done;
+        HTTP_Parse_Result result = http_try_parse_body(
+            &parser->http.status,
+            &parser->http.headers,
+            &parser->buffer[parser->bytes_parsed_offset],
+            parser->buffer_length - parser->bytes_parsed_offset,
+            &parser->http.body
+        );
+
+        if(result != HTTP_Parse_Result_Done) {
+            // printf("**C** result: %i\n", result);
+            return result;
         }
+
+        parser->state = HTTP_Parse_Status_Parsing_Done;
     }
 
     if(parser->state == HTTP_Parse_Status_Parsing_Done) {
         *out_http = parser->http;
-        return true;
+        return HTTP_Parse_Result_Done;
     }
 
-    return false;
+    return HTTP_Parse_Result_Needs_More_Data; // NOTE: SS - Default is to assume that we're missing data. Not sure if correct or not, yet.
 }
 
-bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status *out_status, uint64_t *out_consumed_bytes) {
+HTTP_Parse_Result http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status *out_status, uint64_t *out_consumed_bytes) {
     if (buf == NULL || buf_len == 0) {
         return false;
     }
@@ -176,7 +211,9 @@ bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status 
                 got_status_type = true;
 
                 out_status->type = HTTP_Status_Type_Request;
-                http_string_to_method_type(method_str, &out_status->method);
+                if(!http_string_to_method_type(method_str, &out_status->method)) {
+                    return HTTP_Parse_Result_Invalid_Data;
+                }
 
                 out_status->http_version_major = (uint8_t)http_version_major;
                 out_status->http_version_minor = (uint8_t)http_version_minor;
@@ -224,7 +261,7 @@ bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status 
     }
 
     if(!got_status_type) {
-        return false;
+        return HTTP_Parse_Result_Invalid_Data;
     }
 
     // Now that we've successfully parsed the status-line, count the amount of bytes to consume (offset our buffer).
@@ -247,11 +284,13 @@ bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status 
     assert(buf[consumed] != '\n');
     *out_consumed_bytes = consumed;
     
-    return true;
+    return HTTP_Parse_Result_Done;
 }
 
-bool http_try_parse_header(const char *buf, HTTP_Header *out_header) {
+HTTP_Parse_Result http_try_parse_header(const char *buf, HTTP_Header *out_header) {
     assert(buf != NULL);
+    
+    // TODO: SS - Verify that we have a newline/eof, otherwise we can't be sure that all the data is here.
     
     char fmt[64];
     snprintf(fmt, sizeof(fmt),
@@ -263,13 +302,13 @@ bool http_try_parse_header(const char *buf, HTTP_Header *out_header) {
 
     int n = sscanf(buf, fmt, out_header->key, out_header->value);
     if(n != 2) {
-        return false;
+        return HTTP_Parse_Result_Invalid_Data;
     }
 
-    return true;
+    return HTTP_Parse_Result_Done;
 }
 
-bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes) {
+HTTP_Parse_Result http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes) {
     const char *line_start = buf;
 
     (void)buf_len;
@@ -299,10 +338,23 @@ bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Header
         
             // printf("%s\n", line);
 
+            if(out_headers->header_count >= HTTP_MAX_HEADERS) {
+                break;
+            }
+
             HTTP_Header *header = &out_headers->headers[out_headers->header_count];
-            if(http_try_parse_header(&line[0], header)) {
-                printf("Found header! Index: %i. Key: '%s', value: '%s'.\n", out_headers->header_count, header->key, header->value);
-                out_headers->header_count += 1;
+            HTTP_Parse_Result parse_header_result = http_try_parse_header(&line[0], header);
+            switch(parse_header_result) {
+                case HTTP_Parse_Result_Done: {
+                    printf("Found header! Index: %i. Key: '%s', value: '%s'.\n", out_headers->header_count, header->key, header->value);
+                    out_headers->header_count += 1;
+                    break;
+                }
+                case HTTP_Parse_Result_Needs_More_Data:
+                case HTTP_Parse_Result_TODO:
+                case HTTP_Parse_Result_Invalid_Data: {
+                    return parse_header_result;
+                }
             }
 
             if (buf[i] == '\0') break;
@@ -315,7 +367,7 @@ bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Header
     // printf("Done with headers.\n");
     *out_consumed_bytes += headers_end_index;
 
-    return true;
+    return HTTP_Parse_Result_Done;
 }
 
 // NOTE: SS - Returns true when a chunk has been fully read. Has an out-parameter for the size of the read chunk and for offsetting.
@@ -380,7 +432,7 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
     return false;
 }
 
-bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body) {
+HTTP_Parse_Result http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body) {
     assert(out_body != NULL);
 
     if(status->type == HTTP_Status_Type_Request) {
@@ -402,7 +454,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
         }
         
         if(!should_parse_body) {
-            return true;
+            return HTTP_Parse_Result_Done;
         }
     }
 
@@ -430,7 +482,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
         else {
             // TODO: SS - Multiple encodings may be listed, for example: 'Transfer-Encoding: gzip, chunked'. Implement that.
             printf("Unimplemented HTTP encoding '%s'.\n", encoding);
-            assert(false);
+            return HTTP_Parse_Result_TODO;
         }
 
         out_body->has_encoding_set = true;
@@ -449,7 +501,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
                 if(success) {
                     if(chunk_length == 0) {
                         // printf("Chunk length: %u\n", chunk_length);
-                        return true; // Return 'true' because we're now done parsing the body. :)
+                        return HTTP_Parse_Result_Done; // Return 'done' because we're now done parsing the body. :)
                     }
 
                     string_buffer_append_buf(&out_body->string_buffer, &buf[out_body->offset + chunk_start], chunk_length);
@@ -457,7 +509,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
                 }
                 else {
                     // Wait for more data.
-                    return false;
+                    return HTTP_Parse_Result_Needs_More_Data;
                 }
             }
 
@@ -470,7 +522,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
             if(content_length_text == NULL) {
                 // We don't have a 'Content-Length'. Wait for the socket to close.
                 printf("TODO: SS - Missing 'Content-Length'. Support this.\n");
-                assert(false);
+                return HTTP_Parse_Result_TODO;
             }
             else {
                 // We have a 'Content-Length'. Wait for 'Content-Length' bytes.
@@ -478,24 +530,22 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
                 if(content_length > 0) {
                     // printf("I have %lu, need %lu.\n", buf_len, content_length);
                     if(buf_len < content_length) {
-                        return false;
+                        return HTTP_Parse_Result_Needs_More_Data;
                     }
 
                     string_buffer_append_buf(&out_body->string_buffer, &buf[0], content_length);
                 }
-                return true;
             }
 
             break;
         }
         default: {
             printf("Unhandled Transfer-Encoding %i!\n", out_body->encoding);
-            assert(false);
-            break;
+            return HTTP_Parse_Result_TODO;
         }
     }
 
-    return false;
+    return HTTP_Parse_Result_Done;
 }
 
 bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, const char **out_value) {

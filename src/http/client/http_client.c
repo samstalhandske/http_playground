@@ -106,8 +106,19 @@ static inline bool http_tcp_receive_response_work(Worker_Context *context, const
         // printf("%s\n", ctx->sb.data);
 
         HTTP http;
-        if(http_try_parse(ctx->http_parser, &ctx->sb.data[0], ctx->sb.length, &http)) {
-            return true;
+
+        HTTP_Parse_Result result = http_try_parse(ctx->http_parser, &ctx->sb.data[0], ctx->sb.length, &http);
+        switch(result) {
+            case HTTP_Parse_Result_Done: {
+                return true;
+            }
+            case HTTP_Parse_Result_Needs_More_Data: {
+                return false;
+            }
+            case HTTP_Parse_Result_Invalid_Data:
+            case HTTP_Parse_Result_TODO: {
+                return true;
+            }
         }
     }
 

@@ -27,7 +27,8 @@ typedef enum {
 
 typedef enum {
     HTTP_Method_GET,
-    HTTP_Method_POST
+    HTTP_Method_POST,
+    HTTP_Method_PUT
     // ..
 } HTTP_Method;
 
@@ -92,11 +93,17 @@ typedef struct {
 bool http_parser_init(HTTP_Parser *parser, uint64_t body_buffer_capacity);
 bool http_parser_dispose(HTTP_Parser *parser);
 
-bool http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len, HTTP *out_http);
+typedef enum {
+    HTTP_Parse_Result_Done,
+    HTTP_Parse_Result_Needs_More_Data,
+    HTTP_Parse_Result_Invalid_Data,
+    HTTP_Parse_Result_TODO
+} HTTP_Parse_Result;
 
-bool http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status *out_status, uint64_t *out_consumed_bytes);
-bool http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes);
-bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body);
+HTTP_Parse_Result http_try_parse(HTTP_Parser *parser, const char *buf, const uint64_t buf_len, HTTP *out_http);
+HTTP_Parse_Result http_try_parse_status(const char *buf, const uint64_t buf_len, HTTP_Status *out_status, uint64_t *out_consumed_bytes);
+HTTP_Parse_Result http_try_parse_headers(const char *buf, const uint64_t buf_len, HTTP_Headers *out_headers, uint64_t *out_consumed_bytes);
+HTTP_Parse_Result http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body);
 
 bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, const char **out_value);
 
@@ -104,5 +111,4 @@ const char *http_get_status_text_for_status_code(int status_code);
 
 void http_dispose(HTTP *http);
 
-void http_temp();
 #endif
