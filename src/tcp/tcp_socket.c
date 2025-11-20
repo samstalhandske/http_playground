@@ -233,11 +233,11 @@ TCP_Socket_Result tcp_socket_receive(const TCP_Socket *socket, void *buf, const 
     ssize_t bytes_received = recv(socket->fd, buf, buf_size, flags);
     if(bytes_received == -1) {
         if(errno == EAGAIN) {
-            printf("EAGAIN\n");
+            // printf("EAGAIN\n");
             return TCP_Socket_Result_Not_Ready_To_Be_Read;
         }
         if(errno == EWOULDBLOCK) {
-            printf("EWOULDBLOCK\n");
+            // printf("EWOULDBLOCK\n");
             return TCP_Socket_Result_Not_Ready_To_Be_Read;
         }
 
@@ -246,7 +246,7 @@ TCP_Socket_Result tcp_socket_receive(const TCP_Socket *socket, void *buf, const 
         return TCP_Socket_Result_Failed_To_Read;
     }
 
-    printf("Socket %i received %lu bytes.\n", socket->fd, bytes_received);
+    // printf("Socket %i received %lu bytes.\n", socket->fd, bytes_received);
 
     *out_bytes_received = bytes_received;
     

@@ -100,6 +100,8 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
 
 bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, const char **out_value);
 
+const char *http_get_status_text_for_status_code(int status_code);
+
 void http_dispose(HTTP *http);
 
 void http_temp();

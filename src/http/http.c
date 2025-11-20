@@ -357,7 +357,7 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
     assert(strlen(size_text) > 0);
 
 
-    printf("Size text: '%s'\n", size_text);
+    // printf("Size text: '%s'\n", size_text);
     int result = sscanf(size_text, "%x", &expected_chunk_length);
     assert(result == 1);
 
@@ -383,29 +383,28 @@ static inline bool get_chunk_start_and_length(const char *buf, const uint64_t bu
 bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers, const char *buf, const uint64_t buf_len, HTTP_Body *out_body) {
     assert(out_body != NULL);
 
-    bool should_parse_body = false;
-    switch(status->method) {
-        case HTTP_Method_GET: {
-            should_parse_body = false;
-            break;
+    if(status->type == HTTP_Status_Type_Request) {
+        bool should_parse_body = false;
+        switch(status->method) {
+            case HTTP_Method_GET: {
+                should_parse_body = false;
+                break;
+            }
+            case HTTP_Method_POST: {
+                should_parse_body = true;
+                break;
+            }
+            default: {
+                printf("Unimplemented HTTP-method %i when trying to parse the body. Assuming that no body should be parsed.", status->method);
+                should_parse_body = false;
+                break;
+            }
         }
-        case HTTP_Method_POST: {
-            should_parse_body = true;
-            break;
-        }
-        default: {
-            printf("Unimplemented HTTP-method %i when trying to parse the body. Assuming that no body should be parsed.", status->method);
-            should_parse_body = false;
-            break;
+        
+        if(!should_parse_body) {
+            return true;
         }
     }
-
-    if(!should_parse_body) {
-        return true;
-    }
-
-    printf("Buffer is '%s'.\n", buf);
-
 
     if(!out_body->has_encoding_set) {
         const char *encoding = NULL;
@@ -477,6 +476,7 @@ bool http_try_parse_body(const HTTP_Status *status, const HTTP_Headers *headers,
                 // We have a 'Content-Length'. Wait for 'Content-Length' bytes.
                 uint64_t content_length = atoi(content_length_text);
                 if(content_length > 0) {
+                    // printf("I have %lu, need %lu.\n", buf_len, content_length);
                     if(buf_len < content_length) {
                         return false;
                     }
@@ -510,6 +510,10 @@ bool http_try_get_key_from_header(const HTTP_Headers *headers, const char *key, 
 
     *out_value = NULL;
     return false;
+}
+
+const char *http_get_status_text_for_status_code(int status_code) {
+    return http_status_codes[status_code];
 }
 
 void http_dispose(HTTP *http) {
